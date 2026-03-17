@@ -3,3 +3,6 @@ logs/
 
 # ignore env
 .env
+
+# ignore environment
+.venv/
