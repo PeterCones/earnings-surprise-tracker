@@ -7,7 +7,7 @@ from ingestion.earnings_actuals import insert_actuals
 with DAG(
     dag_id="daily_fetch",
     schedule="0 22 * * 0",
-    start_date=datetime(2026, 3, 22),
+    start_date=datetime(2026, 3, 18),
     catchup=False
 ) as dag:
 
@@ -20,3 +20,5 @@ with DAG(
         task_id="insert_to_raw",
         python_callable=insert_actuals
     ) 
+    
+    fetch >> insert
