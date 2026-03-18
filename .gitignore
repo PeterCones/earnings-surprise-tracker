@@ -1,8 +1,32 @@
-# ignore log files
+# logs
 logs/
 
-# ignore env
+# environment variables
 .env
 
-# ignore environment
+# python virtual environment
 .venv/
+
+# python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# jupyter
+.ipynb_checkpoints/
+
+# output files
+*.csv
+*.json
+
+# dbt
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+
+# airflow
+airflow.db
+airflow.cfg
+webserver_config.py
