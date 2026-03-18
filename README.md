@@ -23,7 +23,7 @@ Every quarter, thousands of companies report earnings. When the actual EPS blows
 │  weekly_fetch (weekdays 9:30 PM)                         │
 │    fetch_finnhub_calendar → insert_to_raw                │
 │                                                          │
-│  daily_fetch (Sundays 10 PM)           ← in progress     │
+│  daily_fetch (Sundays 10 PM)                             │
 │    fetch_finnhub_actuals → insert_to_raw                 │
 └─────────────────────────┬───────────────────────────────┘
                           │  psycopg2 upserts
@@ -48,11 +48,17 @@ Every quarter, thousands of companies report earnings. When the actual EPS blows
 
 ### Airflow Pipeline
 
-A production-grade Airflow stack (CeleryExecutor + Redis) runs in Docker. Every weekday evening at 9:30 PM, a DAG hits the Finnhub API, pulls the current earnings calendar, and upserts rows into the raw layer. No manual steps. No notebooks. Just a pipeline that runs.
+A production-grade Airflow stack (CeleryExecutor + Redis) runs in Docker. Two DAGs run on schedule, both feeding the same raw layer.
 
-- **DAG:** `weekly_fetch` — fires weeknights at 21:30
-- **Tasks:** `fetch_finnhub_calendar` → `insert_to_raw` (XCom handoff between tasks)
+**`weekly_fetch`** — fires weeknights at 21:30
+- **Tasks:** `fetch_finnhub_calendar` → `insert_to_raw` (XCom handoff)
+- Pulls the 7-day earnings calendar from Finnhub and upserts into `raw.estimates`
 - **Conflict handling:** on duplicate `(symbol, date, quarter, year)`, backfills `eps_actual` and `revenue_actual` as they become available post-announcement
+
+**`daily_fetch`** — fires Sundays at 22:00
+- **Tasks:** `fetch_finnhub_actuals` → `insert_to_raw` (XCom handoff)
+- Fetches actuals for the logical execution date and upserts into `raw.estimates`
+- Backfills any rows that landed before the company reported
 
 ### Raw Layer
 
@@ -85,10 +91,6 @@ Only rows with at least one EPS value survive the cut. Clean data only.
 ---
 
 ## What's Being Built
-
-### EPS Actuals Ingestion
-
-A second ingestion path (`earnings_actuals.py`) is being wired up to backfill actuals for past announcements — so the pipeline can catch up on any rows that landed before the company reported. The DAG scaffold is in place (`daily_fetch`, Sundays at 22:00).
 
 ### dbt Analytics Models
 
@@ -159,7 +161,7 @@ psql -h localhost -p 5433 -U earnings -d earnings_tracker -f sql/staging/schema_
 
 ### 4. Run the pipeline
 
-Trigger the DAG from the Airflow UI, or run the ingestion script directly:
+Trigger the DAGs from the Airflow UI, or use the standalone dev script (note: `ingestion.py` uses a hardcoded date range for testing purposes):
 
 ```bash
 python ingestion/ingestion.py
@@ -180,11 +182,11 @@ psql -h localhost -p 5433 -U earnings -d earnings_tracker -f sql/staging/raw_to_
 ├── ingestion/
 │   ├── ingestion.py              # Standalone fetch + upsert script
 │   ├── earnings_calendar.py      # Airflow task functions (fetch + insert)
-│   └── earnings_actuals.py       # ← in progress: backfill actuals
+│   └── earnings_actuals.py       # Airflow task functions (fetch + insert actuals)
 │
 ├── dags/
 │   ├── dag_earnings_calendar.py  # weekly_fetch DAG (live)
-│   └── dag_earnings_actuals.py   # daily_fetch DAG (scaffolded)
+│   └── dag_earnings_actuals.py   # daily_fetch DAG (live)
 │
 ├── sql/
 │   ├── setup.sql                 # Create raw + staging schemas
@@ -223,7 +225,7 @@ The ingestion scripts respect this limit. At scale, a paid tier unlocks bulk his
 - [x] Raw schema and ingestion upsert logic
 - [x] Staging transformation (null cleaning, completeness flags)
 - [x] Airflow DAG for weekly earnings calendar
-- [ ] EPS actuals backfill ingestion
+- [x] EPS actuals backfill ingestion (`daily_fetch` DAG, Sundays 22:00)
 - [ ] dbt staging, intermediate, and analytics models
 - [ ] `earnings_surprises` model with beat/miss classification
 - [ ] `price_reactions` model (requires price data source)
