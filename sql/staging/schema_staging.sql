@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS raw.estimates (
+CREATE TABLE IF NOT EXISTS staging.estimates_cleaned (
     symbol VARCHAR(20),
     date DATE,
     hour VARCHAR(5),
@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS raw.estimates (
     eps_actual NUMERIC(12,4),
     revenue_estimate BIGINT,
     revenue_actual BIGINT,
-    ingested_at TIMESTAMP DEFAULT NOW(),
-    PRIMARY KEY (symbol, date, quarter, year)
+    transformed_at TIMESTAMP DEFAULT NOW(),
+    has_both_eps BOOLEAN,
+    has_both_revenue BOOLEAN
 )
