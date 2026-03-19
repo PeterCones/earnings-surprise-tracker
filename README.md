@@ -12,33 +12,33 @@ Every quarter, thousands of companies report earnings. When actual EPS blows pas
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                         Data Sources                          │
-│                 Finnhub API  (earnings calendar)              │
+│                         Data Sources                         │
+│                 Finnhub API  (earnings calendar)             │
 └──────────────────────────────┬───────────────────────────────┘
                                │  HTTP / JSON
                                ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                  Orchestration  (Airflow 3.1.8)               │
-│                                                               │
-│  weekly_fetch  (weekdays 21:30)                               │
-│    fetch_finnhub_calendar  →  insert_to_raw                   │
-│                                                               │
-│  daily_fetch  (Sundays 22:00)                                 │
-│    fetch_finnhub_actuals  →  insert_to_raw                    │
+│                  Orchestration  (Airflow 3.1.8)              │
+│                                                              │
+│  daily_fetch  (weekdays 21:30)                              │
+│    fetch_finnhub_calendar  →  insert_to_raw                  │
+│                                                              │
+│  weekly_fetch  (Sundays 22:00)                                │
+│    fetch_finnhub_actuals  →  insert_to_raw                   │
 └──────────────────────────────┬───────────────────────────────┘
                                │  psycopg2 upserts
                                ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                  PostgreSQL  (earnings_tracker)                │
-│                                                               │
-│  raw.estimates                 ← live                         │
-│  staging.estimates_cleaned     ← live                         │
-│                                                               │
-│  dbt  staging/stg_estimates    ← live                         │
-│  dbt  analytics/an_eps_surprise← live                         │
-│                                                               │
-│  dbt  intermediate/            ← coming                       │
-│  dbt  analytics/price_reactions← coming                       │
+│                  PostgreSQL  (earnings_tracker)              │
+│                                                              │
+│  raw.estimates                 ← live                        │
+│  staging.estimates_cleaned     ← live                        │
+│                                                              │
+│  dbt  staging/stg_estimates    ← live                        │
+│  dbt  analytics/an_eps_surprise← live                        │
+│                                                              │
+│  dbt  intermediate/            ← coming                      │
+│  dbt  analytics/price_reactions← coming                      │
 └──────────────────────────────────────────────────────────────┘
 ```
 

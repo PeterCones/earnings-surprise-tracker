@@ -5,7 +5,7 @@ from ingestion.earnings_actuals import fetch_actuals
 from ingestion.earnings_actuals import insert_actuals
 
 with DAG(
-    dag_id="daily_fetch",
+    dag_id="weekly_fetch",
     schedule="0 22 * * 0",
     start_date=datetime(2026, 3, 18),
     catchup=False
