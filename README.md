@@ -2,7 +2,7 @@
 
 > *The market moves on surprises. This pipeline captures them.*
 
-Every quarter, thousands of companies report earnings. When the actual EPS blows past estimates — or falls short — prices react violently. This project builds the data infrastructure to capture those moments: ingesting raw earnings data, cleaning it, and surfacing the surprises that drive post-earnings price action.
+Every quarter, thousands of companies report earnings. When actual EPS blows past estimates — or falls short — prices react violently. This project builds the data infrastructure to capture those moments: ingesting raw earnings data, cleaning it, and surfacing the surprises that drive post-earnings price action.
 
 **Stack:** Python · PostgreSQL · Airflow · dbt · Docker Compose
 
@@ -11,35 +11,35 @@ Every quarter, thousands of companies report earnings. When the actual EPS blows
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      Data Sources                        │
-│              Finnhub API (earnings calendar)             │
-└─────────────────────────┬───────────────────────────────┘
-                          │  HTTP / JSON
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│               Orchestration (Airflow 3.1.8)              │
-│                                                          │
-│  weekly_fetch (weekdays 9:30 PM)                         │
-│    fetch_finnhub_calendar → insert_to_raw                │
-│                                                          │
-│  daily_fetch (Sundays 10 PM)                             │
-│    fetch_finnhub_actuals → insert_to_raw                 │
-└─────────────────────────┬───────────────────────────────┘
-                          │  psycopg2 upserts
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│               PostgreSQL (earnings_tracker)              │
-│                                                          │
-│  raw.estimates            ← live                         │
-│  staging.estimates_cleaned ← live                        │
-│                                                          │
-│  dbt staging models       ← coming                       │
-│  dbt intermediate models  ← coming                       │
-│  dbt analytics models     ← coming                       │
-│    └─ earnings_surprises                                 │
-│    └─ price_reactions                                    │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                         Data Sources                          │
+│                 Finnhub API  (earnings calendar)              │
+└──────────────────────────────┬───────────────────────────────┘
+                               │  HTTP / JSON
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│                  Orchestration  (Airflow 3.1.8)               │
+│                                                               │
+│  weekly_fetch  (weekdays 21:30)                               │
+│    fetch_finnhub_calendar  →  insert_to_raw                   │
+│                                                               │
+│  daily_fetch  (Sundays 22:00)                                 │
+│    fetch_finnhub_actuals  →  insert_to_raw                    │
+└──────────────────────────────┬───────────────────────────────┘
+                               │  psycopg2 upserts
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│                  PostgreSQL  (earnings_tracker)                │
+│                                                               │
+│  raw.estimates                 ← live                         │
+│  staging.estimates_cleaned     ← live                         │
+│                                                               │
+│  dbt  staging/stg_estimates    ← live                         │
+│  dbt  analytics/an_eps_surprise← live                         │
+│                                                               │
+│  dbt  intermediate/            ← coming                       │
+│  dbt  analytics/price_reactions← coming                       │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -60,9 +60,11 @@ A production-grade Airflow stack (CeleryExecutor + Redis) runs in Docker. Two DA
 - Fetches actuals for the logical execution date and upserts into `raw.estimates`
 - Backfills any rows that landed before the company reported
 
-### Raw Layer
+---
 
-`raw.estimates` is the append-friendly landing zone for everything Finnhub sends. It stores estimates alongside actuals as they flow in — the foundation for all downstream surprise calculations.
+### Raw Layer — `raw.estimates`
+
+The append-friendly landing zone for everything Finnhub sends. Stores estimates alongside actuals as they flow in.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -77,39 +79,65 @@ A production-grade Airflow stack (CeleryExecutor + Redis) runs in Docker. Two DA
 | `revenue_actual` | `BIGINT` | Reported revenue |
 | `ingested_at` | `TIMESTAMP` | Row insertion time |
 
-### Staging Layer
+---
 
-`staging.estimates_cleaned` is the first transformation pass: zeroes become NULLs (Finnhub uses `0` as a sentinel for missing values), and two boolean flags tell you instantly whether a row has enough data to compute a surprise.
+### Staging Layer — `staging.estimates_cleaned`
+
+The first transformation pass: Finnhub uses `0` as a sentinel for missing values — these become NULLs. Two boolean flags tell you instantly whether a row is ready for surprise calculations.
 
 ```sql
 has_both_eps     = eps_estimate IS NOT NULL AND eps_actual IS NOT NULL
 has_both_revenue = revenue_estimate IS NOT NULL AND revenue_actual IS NOT NULL
 ```
 
-Only rows with at least one EPS value survive the cut. Clean data only.
+Only rows with at least one EPS value survive the cut.
+
+---
+
+### dbt Models
+
+The analytics layer is built with dbt and runs on top of the staging schema.
+
+```
+models/
+├── staging/
+│   └── stg_estimates.sql          — typed view over staging.estimates_cleaned
+│
+└── analytics/
+    └── an_eps_surprise.sql        — materialized EPS surprise table
+         eps_surprise_pct = (eps_actual - eps_estimate) / ABS(eps_estimate)
+```
+
+**`stg_estimates`** is a view that serves as the clean semantic reference for all downstream models. dbt tests enforce non-null keys and composite uniqueness on `(symbol, date, quarter, year)`.
+
+**`an_eps_surprise`** is a materialized table containing only rows where both EPS values are present. It renames columns to business terminology (`symbol → ticker`, `date → report_date`, etc.) and computes the signed surprise percentage.
+
+| Column | Description |
+|---|---|
+| `ticker` | Stock symbol |
+| `report_date` | Earnings announcement date |
+| `report_hour` | BMO / AMC |
+| `fiscal_quarter` | Fiscal quarter (1–4) |
+| `fiscal_year` | Fiscal year |
+| `eps_estimate` | Consensus EPS estimate |
+| `eps_actual` | Reported EPS |
+| `eps_surprise_pct` | `(actual − estimate) / ABS(estimate)` |
+
+dbt tests cover: `not_null` on all key columns, composite uniqueness, ensuring analytical integrity across runs.
 
 ---
 
 ## What's Being Built
 
-### dbt Analytics Models
-
-This is where it gets interesting. Three layers are planned:
-
 ```
-staging/
-  └─ stg_estimates.sql        — typed, renamed, null-safe
-
 intermediate/
-  └─ int_earnings_with_context.sql   — enrichment, joins
+  └─ int_earnings_with_context.sql   — enrichment, joins, derived fields
 
 analytics/
-  └─ earnings_surprises.sql   — the money model
-       eps_surprise_pct = (eps_actual - eps_estimate) / ABS(eps_estimate)
-  └─ price_reactions.sql      — % move from close before → close after
+  └─ price_reactions.sql             — % move from close before → close after
 ```
 
-Once these exist, you'll be able to query: *"Which stocks beat EPS by >10% this quarter? What did they do the next day?"*
+Once price data is integrated, you'll be able to query: *"Which stocks beat EPS by >10% this quarter? What did they do the next day?"*
 
 ---
 
@@ -127,7 +155,7 @@ git clone <this-repo> && cd earnings-surprise-tracker
 cp env.example .env
 ```
 
-Set your key and database credentials in `.env`:
+Edit `.env` with your credentials:
 
 ```env
 finnhub_api_key=your_key_here
@@ -161,16 +189,18 @@ psql -h localhost -p 5433 -U earnings -d earnings_tracker -f sql/staging/schema_
 
 ### 4. Run the pipeline
 
-Trigger the DAGs from the Airflow UI, or use the standalone dev script (note: `ingestion.py` uses a hardcoded date range for testing purposes):
-
-```bash
-python ingestion/ingestion.py
-```
-
-To promote raw data into the staging layer:
+Trigger the DAGs from the Airflow UI, or promote raw data to staging manually:
 
 ```bash
 psql -h localhost -p 5433 -U earnings -d earnings_tracker -f sql/staging/raw_to_staging.sql
+```
+
+### 5. Run dbt
+
+```bash
+cd dbt_project
+dbt run          # build all models
+dbt test         # run data quality tests
 ```
 
 ---
@@ -179,14 +209,13 @@ psql -h localhost -p 5433 -U earnings -d earnings_tracker -f sql/staging/raw_to_
 
 ```
 .
-├── ingestion/
-│   ├── ingestion.py              # Standalone fetch + upsert script
-│   ├── earnings_calendar.py      # Airflow task functions (fetch + insert)
-│   └── earnings_actuals.py       # Airflow task functions (fetch + insert actuals)
-│
 ├── dags/
 │   ├── dag_earnings_calendar.py  # weekly_fetch DAG (live)
 │   └── dag_earnings_actuals.py   # daily_fetch DAG (live)
+│
+├── ingestion/
+│   ├── earnings_calendar.py      # Airflow task functions (fetch + insert calendar)
+│   └── earnings_actuals.py       # Airflow task functions (fetch + insert actuals)
 │
 ├── sql/
 │   ├── setup.sql                 # Create raw + staging schemas
@@ -194,13 +223,19 @@ psql -h localhost -p 5433 -U earnings -d earnings_tracker -f sql/staging/raw_to_
 │   │   └── schema_raw.sql        # raw.estimates DDL
 │   └── staging/
 │       ├── schema_staging.sql    # staging.estimates_cleaned DDL
-│       └── raw_to_staging.sql    # Transformation SQL
+│       └── raw_to_staging.sql    # Transformation SQL (raw → staging)
 │
 ├── dbt_project/
+│   ├── dbt_project.yml
 │   └── models/
-│       ├── staging/              # ← coming
-│       ├── intermediate/         # ← coming
-│       └── analytics/            # ← coming
+│       ├── staging/
+│       │   ├── sources.yml           # Source definitions
+│       │   ├── stg_schema.yml        # Tests + docs
+│       │   └── stg_estimates.sql     # Staging view (live)
+│       ├── intermediate/             # ← coming
+│       └── analytics/
+│           ├── an_schema.yml         # Tests + docs
+│           └── an_eps_surprise.sql   # EPS surprise table (live)
 │
 ├── docker-compose.yml
 ├── requirements.txt
@@ -215,7 +250,7 @@ psql -h localhost -p 5433 -U earnings -d earnings_tracker -f sql/staging/raw_to_
 |---|---|---|
 | Finnhub | 60 req/min | Earnings calendar + actuals |
 
-The ingestion scripts respect this limit. At scale, a paid tier unlocks bulk historical pulls.
+The ingestion scripts respect this limit. A paid tier unlocks bulk historical pulls.
 
 ---
 
@@ -226,8 +261,8 @@ The ingestion scripts respect this limit. At scale, a paid tier unlocks bulk his
 - [x] Staging transformation (null cleaning, completeness flags)
 - [x] Airflow DAG for weekly earnings calendar
 - [x] EPS actuals backfill ingestion (`daily_fetch` DAG, Sundays 22:00)
-- [ ] dbt staging, intermediate, and analytics models
-- [ ] `earnings_surprises` model with beat/miss classification
+- [x] dbt staging model (`stg_estimates`) with data quality tests
+- [x] dbt analytics model (`an_eps_surprise`) with EPS surprise percentage
+- [ ] dbt intermediate models (enrichment, joins)
 - [ ] `price_reactions` model (requires price data source)
-- [ ] dbt tests and data quality checks
 - [ ] Alerting on large surprise events
