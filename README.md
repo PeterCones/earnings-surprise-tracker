@@ -20,10 +20,10 @@ Every quarter, thousands of companies report earnings. When actual EPS blows pas
 ┌──────────────────────────────────────────────────────────────┐
 │                  Orchestration  (Airflow 3.1.8)              │
 │                                                              │
-│  daily_fetch  (weekdays 21:30)                              │
+│  daily_fetch  (weekdays 21:30)                               │ 
 │    fetch_finnhub_calendar  →  insert_to_raw                  │
 │                                                              │
-│  weekly_fetch  (Sundays 22:00)                                │
+│  weekly_fetch  (Sundays 22:00)                               │
 │    fetch_finnhub_actuals  →  insert_to_raw                   │
 └──────────────────────────────┬───────────────────────────────┘
                                │  psycopg2 upserts
