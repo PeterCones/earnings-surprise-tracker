@@ -5,7 +5,7 @@ from ingestion.earnings_calendar import fetch_calendar
 from ingestion.earnings_calendar import insert_calendar
 
 with DAG(
-    dag_id="daily_fetch",
+    dag_id="ingest_calendar",
     schedule="30 21 * * 1-5",
     start_date=datetime(2026, 3, 18),
     catchup=False
