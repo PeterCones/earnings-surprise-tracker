@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: stg_estimates
+    description: "Cleaned estimates from staging.estimates_cleaned, null-safe with completeness flags"
+    columns:
+      - name: symbol
+        description: "Ticker symbol"
+        tests:
+          - not_null
+      - name: date
+        description: "Earnings announcement date"
+        tests:
+          - not_null
+      - name: has_both_eps
+        description: "True if both eps_estimate and eps_actual are non-null"
+        tests:
+          - accepted_values:
+              values: [true, false]
+      - name: has_both_revenue
+        description: "True if both revenue_estimate and revenue_actual are non-null"
+        tests:
+          - accepted_values:
+              values: [true, false]
+    tests:
+      - unique:
+          column_name: "symbol || '-' || date::text || '-' || quarter::text || '-' || year::text"

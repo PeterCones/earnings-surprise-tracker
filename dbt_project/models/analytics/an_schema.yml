@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: an_eps_surprise
+    description: "EPS surprise calculations for all companies with both estimate and actual EPS"
+    columns:
+      - name: ticker
+        description: "Ticker symbol"
+        tests:
+          - not_null
+      - name: eps_surprise_pct
+        description: "EPS surprise as a percentage: (eps_actual - eps_estimate) / ABS(eps_estimate)"
+        tests:
+          - not_null
+      - name: eps_actual
+        description: "Reported EPS"
+        tests:
+          - not_null
+      - name: eps_estimate
+        description: "Consensus EPS estimate"
+        tests:
+          - not_null
+    tests:
+      - unique:
+          column_name: "ticker || '-' || report_date::text || '-' || fiscal_quarter::text || '-' || fiscal_year::text"

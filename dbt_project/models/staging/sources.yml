@@ -1,0 +1,34 @@
+version: 2
+
+sources:
+  - name: staging
+    schema: staging
+    description: "Cleaned and null-safe estimates data promoted from raw.estimates"
+    tables:
+      - name: estimates_cleaned
+        description: "Finnhub earnings data with zero sentinels replaced by NULLs and completeness flags"
+        columns:
+          - name: symbol
+            description: "Ticker symbol"
+          - name: date
+            description: "Earnings announcement date"
+          - name: hour
+            description: "BMO (before market open) or AMC (after market close)"
+          - name: quarter
+            description: "Fiscal quarter (1-4)"
+          - name: year
+            description: "Fiscal year"
+          - name: eps_estimate
+            description: "Consensus EPS estimate"
+          - name: eps_actual
+            description: "Reported EPS actual"
+          - name: revenue_estimate
+            description: "Consensus revenue estimate"
+          - name: revenue_actual
+            description: "Reported revenue actual"
+          - name: has_both_eps
+            description: "True if both eps_estimate and eps_actual are non-null"
+          - name: has_both_revenue
+            description: "True if both revenue_estimate and revenue_actual are non-null"
+          - name: transformed_at
+            description: "Timestamp when row was promoted from raw to staging"
