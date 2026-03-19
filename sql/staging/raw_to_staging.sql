@@ -1,3 +1,5 @@
+TRUNCATE TABLE staging.estimates_cleaned;
+
 INSERT INTO staging.estimates_cleaned (
 symbol
 , date
